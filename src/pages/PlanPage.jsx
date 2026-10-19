@@ -1,0 +1,327 @@
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useMatch, useNavigate, useParams } from 'react-router-dom';
+
+import Toolbar from '../components/panels/Toolbar';
+import DetailPanel from '../components/panels/DetailPanel';
+import QuotationModal from '../components/modals/QuotationModal';
+import PlanMap, { DOWN_MS } from '../components/map/PlanMap';
+
+import { useMapLayout } from '../hooks/useMapLayout';
+import { usePlotFilters } from '../hooks/usePlotFilters';
+import { saveQuotation } from '../firebase/quotationsRepo';
+import { useAuth } from '../context/Authcontext';
+import { SHARE_ROOT } from '../lib/share';
+import { ACCENT, BODY, CANVAS, HAIR, MONO, MUTED, SANS } from '../theme/tokens';
+
+/* Same two anchors PlanMap and DetailPanel already use (NARROW_PX /
+   TABLET_PX in PlanMap, SHEET_BP in DetailPanel) — kept in sync by hand
+   here since this file doesn't import them. If those ever move, this
+   has to move with them or the panel and the frame it's placed against
+   drift apart again. */
+const PHONE_BP = 600;
+const TABLET_BP = 1024;
+
+function Curtain({ tone = MUTED, children }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+      background: CANVAS, color: tone, fontFamily: MONO, fontSize: 13,
+      zIndex: 50, padding: 28, textAlign: 'center', lineHeight: 1.7,
+    }}>
+      <div style={{ maxWidth: 460, width: '100%' }}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * `share` is the whole difference between the salesman's map and the one
+ * a customer opens from WhatsApp. Rather than a second page that would
+ * fall behind this one, the same component runs with three things turned
+ * off: quoting, status editing, and the way back into the app. Anything
+ * added to the map itself is therefore in both views by default, which
+ * is the right default — the customer is meant to see the plan.
+ */
+export default function PlanPage({ share = false }) {
+  const { mapId } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const mapRef = useRef(null);
+  const flightRef = useRef(0);
+  const prevSelRef = useRef(null);
+// const [showStatus, setShowStatus] = useState(true);
+  /* Every path in this file hangs off one root, so the public and
+     private URLs cannot disagree about where a plot lives. */
+  const root = share ? SHARE_ROOT : '/maps';
+
+  /* Plot numbers can carry slashes and spaces ("C-14/A"), so they are
+     encoded going into the path and decoded coming out. */
+  const base = `${root}/${encodeURIComponent(mapId)}`;
+  const plotPath = useCallback(
+    (name) => `${base}/plot/${encodeURIComponent(name)}`,
+    [base],
+  );
+
+  /* The URL is the selection. useMatch rather than a <Route> per state,
+     so this component — and the Google map inside it — never unmounts. */
+  const plotMatch = useMatch(`${root}/:mapId/plot/:plotName/*`);
+  const rawQuoteMatch = useMatch(`${root}/:mapId/plot/:plotName/quote`);
+  const selected = plotMatch ? decodeURIComponent(plotMatch.params.plotName) : null;
+
+  /* Belt and braces: the quote button is already gone in share mode, but
+     a hand-typed /quote must not open the modal either. */
+  const quoteMatch = share ? null : rawQuoteMatch;
+
+  const [showNumbers, setShowNumbers] = useState(true);
+  const [showStatus, setShowStatus] = useState(false);
+
+  const { layout, status, setStatus, source, error, loading, count } = useMapLayout(mapId);
+  const filters = usePlotFilters(layout, status);
+
+  const fitWholePlan = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !window.google || !layout) return;
+    const b = new window.google.maps.LatLngBounds();
+    layout.features.forEach((f) => f.pts.forEach((p) => b.extend(layout.toLL(p[0], p[1]))));
+    map.fitBounds(b, 48);
+  }, [layout]);
+
+  /** frame a plot into the part of the map the panel does not cover.
+      Three tiers, not one: a tablet has neither a phone's full-width
+      sheet nor a laptop's spare width for a 380px-wide gap on the
+      right, and framing it as either leaves the plot too small or too
+      close to the panel. */
+  const zoomTo = useCallback((plot) => {
+    const map = mapRef.current;
+    if (!map || !window.google || !layout) return;
+    const b = new window.google.maps.LatLngBounds();
+    plot.pts.forEach((p) => b.extend(layout.toLL(p[0], p[1])));
+
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    let padding;
+    if (w <= PHONE_BP) {
+      /* phone: DetailPanel is a bottom sheet up to 60vh tall, 8px off
+         the edge — see DetailPanel's SHEET_BP block */
+      padding = { top: 90, bottom: Math.round(h * 0.62), left: 56, right: 56 };
+    } else if (w <= TABLET_BP) {
+      /* tablet: DetailPanel is still a bottom sheet here (centred,
+         capped at 760px wide) rather than the desktop rail, so the
+         reserved band is still along the BOTTOM, not the right */
+      padding = { top: 90, bottom: Math.round(h * 0.42), left: 72, right: 72 };
+    } else {
+      /* desktop: DetailPanel is a 320px rail inset 14px from the right */
+      padding = { top: 130, bottom: 130, left: 110, right: 380 };
+    }
+    map.fitBounds(b, padding);
+  }, [layout]);
+
+  const selPlot = selected && layout ? layout.byName.get(selected) : null;
+  const selLL = selPlot ? layout.toLL(selPlot.c[0], selPlot.c[1]) : null;
+
+  /* A link to a plot that isn't in this layout falls back to the whole
+     plan rather than a dead panel. Replace, not push, so Back doesn't
+     bounce into the bad URL again. */
+  useEffect(() => {
+    if (selected && layout && !layout.byName.has(selected)) {
+      navigate(base, { replace: true });
+    }
+  }, [selected, layout, navigate, base]);
+
+  /* Framing follows the URL, so it happens the same way whether the plot
+     was tapped, deep-linked, or reached with the Back button. Swapping
+     between plots costs a sink animation first, so the camera waits for
+     it; arriving from nothing has nothing to wait for. */
+  useEffect(() => {
+    const prev = prevSelRef.current;
+    prevSelRef.current = selected;
+
+    clearTimeout(flightRef.current);
+    if (!selPlot) return undefined;
+
+    if (prev) flightRef.current = setTimeout(() => zoomTo(selPlot), DOWN_MS);
+    else zoomTo(selPlot);
+
+    return () => clearTimeout(flightRef.current);
+  }, [selected, selPlot, zoomTo]);
+
+  /* zoomTo reads window.innerWidth/innerHeight once, when it runs — but
+     rotating a phone, resizing a browser window, or a foldable's hinge
+     event doesn't re-select anything, so without this the padding tier
+     stays stuck on whatever it was framed for at pick time and the plot
+     ends up hidden under the panel, or oddly small, after a rotation. */
+  useEffect(() => {
+    if (!selPlot) return undefined;
+    let timer = 0;
+    const onResize = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => zoomTo(selPlot), 120);
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener('resize', onResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      if (vv) vv.removeEventListener('resize', onResize);
+    };
+  }, [selPlot, zoomTo]);
+
+  const onSelect = useCallback((name) => {
+    if (!name) { navigate(base); return; }
+    // tapping the raised plot again puts it back down
+    navigate(name === selected ? base : plotPath(name));
+  }, [navigate, selected, base, plotPath]);
+
+  /* user is null on the public route, so every read of it is optional
+     here — this callback is unreachable in share mode, but a crash on a
+     customer's phone is not worth the two question marks saved. */
+  const onSaveQuote = useCallback((record) => saveQuotation({
+    ...record,
+    mapId,
+    plotPath: selPlot ? selPlot.docPath : null,
+    savedBy: user?.uid,
+    savedByName: user?.name || user?.email,
+  }), [selPlot, mapId, user]);
+
+  return (
+    <div style={{
+      width: '100%', height: '100dvh', position: 'relative',
+      display: 'flex', flexDirection: 'column', background: CANVAS, color: '#E7E1D5',
+      fontFamily: BODY, overflow: 'hidden',
+    }}>
+      <style>{`
+        * { -webkit-tap-highlight-color: transparent; }
+        input::placeholder { color: #5F6B78; }
+        *:focus-visible { outline: 2px solid ${ACCENT}; outline-offset: 2px; }
+        .toolbar { display: flex; align-items: center; gap: 8px; padding: 9px 14px;
+          border-bottom: 1px solid ${HAIR}; flex-wrap: wrap; }
+        .toolbar .spacer { margin-left: auto; }
+        .toolbar-count { font-family: ${MONO}; font-size: 12px; color: ${MUTED}; }
+        .gm-style img { max-width: none; }
+
+        /* tablet: tighten before the phone-only collapse kicks in, so
+           there isn't a wide dead zone between "roomy desktop toolbar"
+           and "horizontally-scrolling phone toolbar" */
+        @media (max-width: ${TABLET_BP}px) {
+          .toolbar { gap: 7px; padding: 8px 12px; }
+        }
+
+        @media (max-width: ${PHONE_BP}px) {
+          .toolbar { gap: 6px; padding: 8px 10px; overflow-x: auto; flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch; }
+          .toolbar > * { flex: 0 0 auto; }
+          .toolbar .spacer { margin-left: 6px; }
+          .toolbar .area-label { display: none; }
+        }
+
+        @media (max-width: 380px) {
+          .toolbar { gap: 4px; padding: 7px 8px; }
+          .toolbar-count { font-size: 11px; }
+        }
+      `}</style>
+
+      <Toolbar
+        filters={filters}
+        layout={layout}
+        showNumbers={showNumbers}
+        setShowNumbers={setShowNumbers}
+        showStatus={showStatus}
+        setShowStatus={setShowStatus}
+        onFitPlan={() => { navigate(base); fitWholePlan(); }}
+        /* null, not a no-op: a customer opening this from WhatsApp has
+           no dashboard to go back to, and a dead button is worse than
+           no button. Toolbar renders Back only when this is given. */
+        onBack={share ? null : () => navigate('/')}
+      />
+
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        {layout && (
+          <PlanMap
+          share
+            layout={layout}
+            mapRef={mapRef}
+            selected={selected}
+            onSelect={onSelect}
+            matches={filters.matches}
+            status={status}
+            showNumbers={showNumbers}
+            showStatus={showStatus}
+            onReady={fitWholePlan}
+             mapId={mapId}
+            site={{
+              info: { title: 'Prospera Saraswati', rows: [, ['Plots', '51']], note: '' },
+              gallery: [{ url: '…', thumb: '…', caption: '' }],
+              brochures: [{ name: 'Layout plan', url: '…', size: '2.4 MB' }],
+            }}
+          />
+//           <PlanMap
+//   layout={layout}
+//   selected={selected}
+//   onSelect={setSelected}
+//   matches={matches}
+//   mapRef={mapRef}
+//   fitRef={fitRef}
+//   onReady={onReady}
+//   // site={site}
+//   site={{
+//              info: { title: 'Prospera Saraswati', rows: [, ['Plots', '51']], note: '' },
+//               gallery: [{ url: '…', thumb: '…', caption: '' }],
+//               brochures: [{ name: 'Layout plan', url: '…', size: '2.4 MB' }],
+//              }}
+//   mapId={mapId}
+//   share                 /* takes colours, legend and switch together */
+//   status={null}
+//   setShowStatus={null}  /* no setter, so MapToggles draws no switch */
+// />
+        )}
+
+        <DetailPanel
+          plot={selPlot}
+          status={status}
+          /* Shared link is read-only: the plan, the plot sizes and the
+             sold/available colours are the point, editing them is not. */
+          setStatus={share ? null : setStatus}
+          latLng={selLL}
+          onClose={() => navigate(base)}
+          onQuote={share ? null : () => navigate(`${plotPath(selected)}/quote`)}
+        />
+
+        {layout && error && (
+          <div style={{
+            position: 'absolute', left: 14, right: 14, bottom: 14, zIndex: 6,
+            fontFamily: MONO, fontSize: 11, color: '#E0A33C', textAlign: 'center',
+            pointerEvents: 'none',
+          }}>
+            {error}
+          </div>
+        )}
+
+        {loading && <Curtain>Reading map...</Curtain>}
+
+        {!loading && !layout && (
+          <Curtain tone="#E0A33C">
+            <div style={{
+              fontFamily: SANS, fontSize: 20, letterSpacing: '0.08em',
+              textTransform: 'uppercase', color: ACCENT, marginBottom: 12,
+            }}>
+              Nothing to draw
+            </div>
+          </Curtain>
+        )}
+      </div>
+
+      {quoteMatch && selPlot && (
+        <QuotationModal
+          plot={selPlot}
+          onClose={() => navigate(plotPath(selected))}
+          onSave={onSaveQuote}
+        />
+      )}
+    </div>
+  );
+}
