@@ -82,8 +82,8 @@ export const STATUS = {
     key: 'booked', doc: 'Booked', label: 'Booked', legacy: [],
     fill: '#28465e', dot: '#28465e', ink: '#FFFFFF',
   },
-  partial: {
-    key: 'partial', doc: 'Partial Payment', label: 'Part paid', legacy: ['reserved'],
+  partPayment: {
+    key: 'part payment', doc: 'Part Payment', label: 'Part Payment', legacy: ['reserved'],
     fill: '#056017', dot: '#056017', ink: '#1A1208',
   },
   agreement: {
