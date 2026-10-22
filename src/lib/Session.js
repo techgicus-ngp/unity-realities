@@ -7,7 +7,7 @@
 //
 // The key must match SESSION_KEY in authService.js.
 
-const SESSION_KEY = 'aradhya_session_user';
+const SESSION_KEY = 'unity_session_user';
 
 /** The stored session object, or null. Never throws on bad JSON. */
 export function sessionUser() {
