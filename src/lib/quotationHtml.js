@@ -1,273 +1,487 @@
-// lib/quotationHtml.js — the printed quotation, as an A4 HTML document.
+// // lib/quotationHtml.js — the printed quotation, as an A4 HTML document.
 
-/**
- * The Flutter version builds this with the `pdf` package and hands it to
- * `Printing.layoutPdf`, which opens the system print sheet. The browser
- * already has that sheet, and its "Save as PDF" writes a real PDF — so
- * the web version is the same document expressed in HTML and handed to
- * window.print(), with no PDF library in the bundle at all.
- *
- * It is rendered into a separate window rather than a hidden div in the
- * app. A print stylesheet inside a single-page app has to out-specify
- * every rule the app already ships; a blank window starts from nothing,
- * so what you see in the preview is exactly this file.
- *
- * The layout mirrors the Flutter page: header bar, customer and project
- * side by side, milestone dates, then two columns — amounts on the left,
- * summary and balance breakdown on the right — total banner, terms,
- * signatures. It is built to fit ONE A4 page, which is why the type runs
- * small and the padding is tight.
- *
- * The logo is imported rather than referenced by path. The print window
- * is about:blank, so it has no base URL to resolve a relative path
- * against; whatever reaches the document has to be absolute or inlined.
- */
+// /**
+//  * The Flutter version builds this with the `pdf` package and hands it to
+//  * `Printing.layoutPdf`, which opens the system print sheet. The browser
+//  * already has that sheet, and its "Save as PDF" writes a real PDF — so
+//  * the web version is the same document expressed in HTML and handed to
+//  * window.print(), with no PDF library in the bundle at all.
+//  *
+//  * It is rendered into a separate window rather than a hidden div in the
+//  * app. A print stylesheet inside a single-page app has to out-specify
+//  * every rule the app already ships; a blank window starts from nothing,
+//  * so what you see in the preview is exactly this file.
+//  *
+//  * The layout mirrors the Flutter page: header bar, customer and project
+//  * side by side, milestone dates, then two columns — amounts on the left,
+//  * summary and balance breakdown on the right — total banner, terms,
+//  * signatures. It is built to fit ONE A4 page, which is why the type runs
+//  * small and the padding is tight.
+//  *
+//  * The logo is imported rather than referenced by path. The print window
+//  * is about:blank, so it has no base URL to resolve a relative path
+//  * against; whatever reaches the document has to be absolute or inlined.
+//  */
+
+// import logoAsset from '../assets/logo.jpg';
+
+// const BLUE = '#1565C0';
+// const DEEP = '#0D47A1';
+// const LIGHT = '#E3F2FD';
+// const GREEN = '#2E7D32';
+// const LIGHT_GREEN = '#E8F5E9';
+// const PURPLE = '#6A1B9A';
+// const LIGHT_PURPLE = '#EDE7F6';
+// const DIVIDER = '#BBDEFB';
+
+// const inr = (n) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
+// const nfmt = (n) => (n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// const dfmt = (d) => (d
+//   ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+//   : '—');
+
+// /* HTML-escape everything that came from a user. A customer called
+//    "Sharma & Sons <Nagpur>" would otherwise break the document. */
+// const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+//   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+// }[c]));
+
+// const kv = (k, v) => `
+//   <div class="kv"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v || '—')}</span></div>`;
+
+// const amt = (label, value, { head = false, total = false, alt = false, sub = '' } = {}) => `
+//   <div class="amt${head ? ' amt-head' : ''}${total ? ' amt-total' : ''}${alt ? ' amt-alt' : ''}">
+//     <span class="amt-l">${esc(label)}${sub ? `<em>${esc(sub)}</em>` : ''}</span>
+//     <span class="amt-v">${head ? esc(value) : inr(value)}</span>
+//   </div>`;
+
+// const sum = (label, value, alt = false) => `
+//   <div class="sum${alt ? ' sum-alt' : ''}"><span>${esc(label)}</span><span>${inr(value)}</span></div>`;
+
+// const milestone = (label, date, colour, bg) => {
+//   const on = !!date;
+//   return `
+//   <div class="ms" style="background:${on ? bg : '#F5F5F5'};border-color:${on ? colour : '#E0E0E0'}">
+//     <div class="ms-l" style="color:${on ? colour : '#9E9E9E'}">${esc(label)}</div>
+//     <div class="ms-d" style="color:${on ? colour : '#BDBDBD'};font-weight:${on ? 700 : 400}">${dfmt(date)}</div>
+//   </div>`;
+// };
+
+// const TERMS = [
+//   'If your accounts do not tally with our records please contact our office immediately.',
+//   'Please mention customer name, project name, plot no. & payment details behind your cheque or DD.',
+//   'Taxes as applicable by Govt. Cheque bounce charges will be applicable.',
+//   'In case of booking cancellation Rs. 1000/- will be charged.',
+//   'Agreement amount should be paid within 20 days and sale deed should be done within 3 months from the date of booking. If not the company will cancel the plot.',
+// ];
+
+// export function quotationHtml(q, { company = 'Unity Realities', unit = 'Unity Realities', logo = '' } = {}) {
+//   const ref = q.id ? q.id.slice(0, 8).toUpperCase() : '';
+//   const stampReg = q.stampDutyAmount + q.registrationAmount;
+
+//   return `<!doctype html>
+// <html><head><meta charset="utf-8"><title>Quotation ${esc(q.customerName)} ${esc(q.plotNumber)}</title>
+// <style>
+//   @page { size: A4; margin: 10mm 9mm; }
+//   * { box-sizing: border-box; }
+//   body {
+//     margin: 0; font-family: 'Noto Sans', 'Inter', system-ui, sans-serif;
+//     color: #111; font-size: 8px; line-height: 1.35;
+//     -webkit-print-color-adjust: exact; print-color-adjust: exact;
+//   }
+//   .bar {
+//     background: ${BLUE}; color: #fff; border-radius: 8px; padding: 8px 16px;
+//     display: flex; justify-content: space-between; align-items: center;
+//   }
+//   .brand { display: flex; align-items: center; gap: 10px; }
+//   .brand img { width: 70px; height: auto; padding: 3px; background: #fff; border-radius: 6px; object-fit: contain; }
+//   .brand h1 { margin: 0; font-size: 15px; letter-spacing: 1.2px; }
+//   .brand p { margin: 0; font-size: 9px; opacity: 0.85; }
+//   .tag { background: #fff; color: ${BLUE}; font-weight: 700; font-size: 10.5px;
+//          padding: 3px 12px; border-radius: 14px; display: inline-block; }
+//   .meta { text-align: right; font-size: 8.5px; opacity: 0.9; margin-top: 3px; }
+//   .ref { font-size: 7.5px; opacity: 0.6; }
+
+//   .row { display: flex; gap: 8px; align-items: flex-start; }
+//   .col { flex: 1; min-width: 0; }
+//   .gap { height: 5px; }
+
+//   .card { border: 0.5px solid ${DIVIDER}; border-radius: 6px; overflow: hidden; }
+//   .card > h2 { margin: 0; padding: 3px 8px; font-size: 8px; color: #fff; background: ${BLUE}; }
+//   .card.alt > h2 { background: ${DEEP}; }
+//   .card-body { background: ${LIGHT}; }
+//   .card.alt .card-body { background: #F8F9FA; }
+
+//   .kv { display: flex; padding: 2.5px 8px; font-size: 7.5px; }
+//   .kv-k { width: 60px; color: #616161; flex: none; }
+//   .kv-v { flex: 1; text-align: right; color: #000; font-size: 8px; word-break: break-word; }
+
+//   .sec { margin: 0 0 2px; padding: 3px 8px; border-radius: 4px;
+//          background: ${BLUE}; color: #fff; font-size: 8.5px; font-weight: 700; }
+//   .table { border: 0.5px solid ${DIVIDER}; border-radius: 4px; overflow: hidden; }
+//   .amt { display: flex; justify-content: space-between; gap: 8px; padding: 2.8px 8px; font-size: 8px; }
+//   .amt-l em { display: block; font-style: normal; font-size: 6.5px; color: #757575; }
+//   .amt-alt { background: ${LIGHT}; }
+//   .amt-head { background: ${BLUE}; color: #fff; font-weight: 700; }
+//   .amt-total { background: ${DEEP}; color: #fff; font-weight: 700; }
+//   .amt-head .amt-l em, .amt-total .amt-l em { color: #E0E0E0; }
+
+//   .box { border: 0.5px solid; border-radius: 6px; overflow: hidden; }
+//   .box > h3 { margin: 0; padding: 3px 8px; font-size: 8px; color: #fff; }
+//   .sum { display: flex; justify-content: space-between; padding: 2.8px 8px; font-size: 7.5px; color: #616161; }
+//   .sum span:last-child { font-weight: 700; color: #000; font-size: 8px; }
+//   .grand { display: flex; justify-content: space-between; padding: 4px 8px; color: #fff; font-weight: 700; font-size: 8.5px; }
+
+//   .ms { flex: 1; border: 0.5px solid; border-radius: 4px; padding: 4px 7px; }
+//   .ms-l { font-size: 6.5px; font-weight: 700; }
+//   .ms-d { font-size: 7.5px; margin-top: 1.5px; }
+
+//   .terms { border: 0.5px solid ${DIVIDER}; border-radius: 6px; overflow: hidden; background: #F8F9FA; }
+//   .terms > h2 { margin: 0; padding: 3px 8px; font-size: 7.5px; color: #fff; background: ${BLUE}; }
+//   .terms ol { margin: 0; padding: 4px 8px 4px 20px; }
+//   .terms li { font-size: 6.8px; color: #424242; margin-bottom: 1.5px; }
+
+//   .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; }
+//   .sign b { font-size: 7.5px; }
+//   .rule { width: 110px; height: 0.5px; background: #9E9E9E; margin-top: 14px; }
+//   .note { font-size: 6.5px; color: #9E9E9E; text-align: center; }
+
+//   .banner { background: ${DEEP}; color: #fff; border-radius: 6px; padding: 7px 16px;
+//             display: flex; justify-content: space-between; align-items: center; }
+//   .banner b { font-size: 11.5px; letter-spacing: 0.8px; }
+//   .banner span { font-size: 14px; font-weight: 700; }
+// </style></head>
+// <body>
+
+//   <div class="bar">
+//     <div class="brand">
+//       ${logo ? `<img src="${esc(logo)}" alt="">` : ''}
+//       <div><h1>${esc(company)}</h1><p>${esc(unit)}</p></div>
+//     </div>
+//     <div>
+//       <div class="tag">QUOTATION</div>
+//       <div class="meta">Date: ${dfmt(q.quotationDate)}</div>
+//       ${ref ? `<div class="meta ref">Ref: ${esc(ref)}</div>` : ''}
+//     </div>
+//   </div>
+
+//   <div class="gap"></div>
+
+//   <div class="row">
+//     <div class="col card"><h2>Customer Details</h2><div class="card-body">
+//       ${kv('Name', q.customerName)}${kv('Mobile', q.mobileNumber)}${kv('Address', q.address)}
+//     </div></div>
+//     <div class="col card alt"><h2>Project Details</h2><div class="card-body">
+//       ${kv('Project', q.projectName)}${kv('Plot No.', q.plotNumber)}
+//       ${kv('Plot Size', `${nfmt(q.plotSize)} sq ft`)}${kv('Rate', `${inr(q.ratePerSqFt)} / sq ft`)}
+//       ${kv('Prepared by', q.createdByName)}
+//     </div></div>
+//   </div>
+
+//   <div class="gap"></div>
+
+//   <div class="box" style="border-color:#CE93D8;background:${LIGHT_PURPLE}">
+//     <h3 style="background:${PURPLE}">Payment Milestone Dates</h3>
+//     <div class="row" style="padding:5px;gap:4px">
+//       ${milestone('Booking Date', q.bookingDate, BLUE, LIGHT)}
+//       ${milestone('Down Payment Date', q.downPaymentDate, GREEN, LIGHT_GREEN)}
+//       ${milestone('Sale Deed Date', q.saleDeederDate, PURPLE, '#F3E5F5')}
+//     </div>
+//   </div>
+
+//   <div class="gap"></div>
+
+//   <div class="row">
+//     <div class="col" style="flex:5">
+//       <div class="sec">1. Plot Amount</div>
+//       <div class="table">
+//         ${amt('Description', 'Amount', { head: true })}
+//         ${amt('Total Plot Amount', q.totalPlotAmount, { sub: `${nfmt(q.plotSize)} sq ft × ${inr(q.ratePerSqFt)}` })}
+//         ${amt(`Down Payment (${q.downPaymentOption || '20%'})`, q.downPayment, { alt: true })}
+//         ${amt('Booking', q.bookingAmount)}
+//         ${amt('Remaining', q.loanAmount)}
+//       </div>
+//       <div class="gap"></div>
+
+//       <div class="sec">2. Stamp Duty &amp; Registration</div>
+//       <div class="table">
+//         ${amt('Description', 'Amount', { head: true })}
+//         ${amt(`Stamp Duty (${Math.round(q.stampDutyPercent)}%)`, q.stampDutyAmount)}
+//         ${amt('Registration', q.registrationAmount, { alt: true })}
+//         ${amt('Stamp + Reg Total', stampReg, { total: true })}
+//       </div>
+//       <div class="gap"></div>
+
+//       <div class="sec">3. Administrative Charges</div>
+//       <div class="table">
+//         ${amt('Description', 'Amount', { head: true })}
+//         ${amt('Legal & 7/12', q.mutation)}
+//         ${amt('Maintenance (3 Years)', q.societyCharges)}
+//         ${amt('Admin Total', q.adminTotal, { total: true })}
+//       </div>
+//     </div>
+
+//     <div class="col" style="flex:4">
+//       <div class="box" style="border-color:#A5D6A7;background:${LIGHT_GREEN}">
+//         <h3 style="background:${GREEN}">Payment Summary</h3>
+  
+       
+//               ${sum('Plot Amount', q.totalPlotAmount)}
+//               ${amt('Stamp + Reg Total', stampReg)}
+//         ${sum('Admin Charges', q.adminTotal)}
+        
+//         <div class="grand" style="background:${GREEN}"><span>GRAND TOTAL</span><span>${inr(q.finalTotalAmount)}</span></div>
+//       </div>
+//       <div class="gap"></div>
+
+    
+//     </div>
+//   </div>
+
+//   <div class="gap"></div>
+
+//   <div class="banner"><b>FINAL TOTAL AMOUNT</b><span>${inr(q.finalTotalAmount)}</span></div>
+
+//   <div class="gap"></div>
+
+//   <div class="terms">
+//     <h2>TERMS &amp; CONDITIONS</h2>
+//     <ol>${TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+//   </div>
+
+//   <div class="sign">
+//     <div><b>Customer Signature</b><div class="rule"></div></div>
+//     <div class="note">This is a computer-generated quotation.<br>All amounts are in Indian Rupees (₹).</div>
+//     <div style="text-align:right"><b>Authorized Signature</b><div class="rule"></div></div>
+//   </div>
+
+// </body></html>`;
+// }
+
+// /**
+//  * Inline the logo as a data URI.
+//  *
+//  * The bundler turns the import into a root-relative URL ("/assets/logo-
+//  * a1b2c3.jpeg"), which the print window cannot resolve — about:blank has
+//  * no base to resolve it against. Inlining also removes the network fetch
+//  * that would otherwise still be in flight when the print sheet opens.
+//  * Converted once per session and cached; if the fetch fails we fall back
+//  * to an absolute URL, which at least renders on screen.
+//  */
+// let cachedLogo = null;
+
+// async function logoAsDataUrl(src) {
+//   if (!src) return '';
+//   if (src.startsWith('data:')) return src;
+//   if (cachedLogo) return cachedLogo;
+//   try {
+//     const blob = await (await fetch(src)).blob();
+//     cachedLogo = await new Promise((resolve, reject) => {
+//       const reader = new FileReader();
+//       reader.onload = () => resolve(reader.result);
+//       reader.onerror = reject;
+//       reader.readAsDataURL(blob);
+//     });
+//     return cachedLogo;
+//   } catch {
+//     return new URL(src, window.location.href).href;
+//   }
+// }
+
+// /**
+//  * Write the document into a new window, optionally printing it.
+//  *
+//  * The window has to be opened synchronously, before the first await, or
+//  * the pop-up blocker treats it as unrelated to the click that started it.
+//  * Printing waits on the images rather than on w.onload: after a
+//  * document.write the load event can fire before the handler is attached,
+//  * and then the print sheet never opens at all.
+//  */
+// async function openQuotationWindow(q, opts = {}, print) {
+//   const w = window.open('', '_blank', 'width=900,height=1200');
+//   if (!w) return false;               // pop-up blocked
+
+//   const logo = await logoAsDataUrl(opts.logo ?? logoAsset);
+//   w.document.write(quotationHtml(q, { ...opts, logo }));
+//   w.document.close();
+
+//   if (print) {
+//     await Promise.all([...w.document.images].map((img) => (img.complete
+//       ? null
+//       : new Promise((resolve) => { img.onload = img.onerror = resolve; }))));
+//     w.focus();
+//     w.print();
+//   }
+//   return true;
+// }
+
+// /** Open the print sheet. Returns false if the pop-up was blocked. */
+// export function printQuotation(q, opts) {
+//   return openQuotationWindow(q, opts, true);
+// }
+
+// /** Preview without the print sheet — same document, no dialog. */
+// export function previewQuotation(q, opts) {
+//   return openQuotationWindow(q, opts, false);
+// }
+
+
+
+
+
+// lib/quotationHtml.js — the printed quotation, laid out like the Unity
+// Realities paper form (letterhead, double rule, labels on ruled lines).
 
 import logoAsset from '../assets/logo.jpg';
 
-const BLUE = '#1565C0';
-const DEEP = '#0D47A1';
-const LIGHT = '#E3F2FD';
-const GREEN = '#2E7D32';
-const LIGHT_GREEN = '#E8F5E9';
-const PURPLE = '#6A1B9A';
-const LIGHT_PURPLE = '#EDE7F6';
-const DIVIDER = '#BBDEFB';
+const BLUE = '#27549A';   // the blue of the stamped letterhead
+const INK = '#111';
 
 const inr = (n) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
-const nfmt = (n) => (n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sq = (n) => (n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
 const dfmt = (d) => (d
   ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  : '—');
+  : '');
 
-/* HTML-escape everything that came from a user. A customer called
-   "Sharma & Sons <Nagpur>" would otherwise break the document. */
+/* 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 20th, 21st */
+const ordinal = (n) => {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  return `${n}${{ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'}`;
+};
+
+/* HTML-escape everything that came from a user. */
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 
-const kv = (k, v) => `
-  <div class="kv"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v || '—')}</span></div>`;
-
-const amt = (label, value, { head = false, total = false, alt = false, sub = '' } = {}) => `
-  <div class="amt${head ? ' amt-head' : ''}${total ? ' amt-total' : ''}${alt ? ' amt-alt' : ''}">
-    <span class="amt-l">${esc(label)}${sub ? `<em>${esc(sub)}</em>` : ''}</span>
-    <span class="amt-v">${head ? esc(value) : inr(value)}</span>
+/* one form row: blue label, then the value sitting on a ruled line.
+   `suffix` is small text after the value (the 20% on the down payment). */
+const field = (label, value, { suffix = '' } = {}) => `
+  <div class="f">
+    <span class="f-l">${esc(label)}</span>
+    <span class="f-v">${esc(value || '')}</span>
+    ${suffix ? `<span class="f-s">${esc(suffix)}</span>` : ''}
   </div>`;
 
-const sum = (label, value, alt = false) => `
-  <div class="sum${alt ? ' sum-alt' : ''}"><span>${esc(label)}</span><span>${inr(value)}</span></div>`;
+const pair = (a, b) => `<div class="pair">${a}${b}</div>`;
 
-const milestone = (label, date, colour, bg) => {
-  const on = !!date;
-  return `
-  <div class="ms" style="background:${on ? bg : '#F5F5F5'};border-color:${on ? colour : '#E0E0E0'}">
-    <div class="ms-l" style="color:${on ? colour : '#9E9E9E'}">${esc(label)}</div>
-    <div class="ms-d" style="color:${on ? colour : '#BDBDBD'};font-weight:${on ? 700 : 400}">${dfmt(date)}</div>
-  </div>`;
-};
-
-const TERMS = [
-  'If your accounts do not tally with our records please contact our office immediately.',
-  'Please mention customer name, project name, plot no. & payment details behind your cheque or DD.',
-  'Taxes as applicable by Govt. Cheque bounce charges will be applicable.',
-  'In case of booking cancellation Rs. 1000/- will be charged.',
-  'Agreement amount should be paid within 20 days and sale deed should be done within 3 months from the date of booking. If not the company will cancel the plot.',
-];
-
-export function quotationHtml(q, { company = 'Unity Realities', unit = 'Unity Realities', logo = '' } = {}) {
+export function quotationHtml(q, { logo = '' } = {}) {
   const ref = q.id ? q.id.slice(0, 8).toUpperCase() : '';
-  const stampReg = q.stampDutyAmount + q.registrationAmount;
+
+  /* older records may not have these saved */
+  const months = q.emiMonths || 35;
+  const day = q.emiDay || 20;
+  const balance = q.loanAmount ?? q.balanceAmount ?? 0;
+  const emi = q.emiAmount || Math.round(balance / months);
+  const downPct = Math.round(q.downPaymentPercent || 20);
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Quotation ${esc(q.customerName)} ${esc(q.plotNumber)}</title>
 <style>
-  @page { size: A4; margin: 10mm 9mm; }
+  @page { size: A4; margin: 12mm 12mm; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; font-family: 'Noto Sans', 'Inter', system-ui, sans-serif;
-    color: #111; font-size: 8px; line-height: 1.35;
+    margin: 0; color: ${INK}; font-size: 14px; line-height: 1.4;
+    font-family: 'Noto Sans', 'Inter', 'Segoe UI', system-ui, sans-serif;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .bar {
-    background: ${BLUE}; color: #fff; border-radius: 8px; padding: 8px 16px;
-    display: flex; justify-content: space-between; align-items: center;
+
+  /* ── letterhead ─────────────────────────────── */
+  .om { text-align: center; font-size: 9px; color: ${BLUE}; margin-bottom: 4px; }
+  .head { display: flex; align-items: center; gap: 14px; }
+  .head img { width: 190px; height: auto; object-fit: contain; flex: none; }
+  .head .name { width: 190px; flex: none; color: ${BLUE}; font-weight: 700; font-size: 20px; }
+  .vr { width: 1.5px; align-self: stretch; background: ${BLUE}; flex: none; }
+  .addr { color: ${BLUE}; font-size: 9.5px; line-height: 1.45; font-weight: 600; }
+  .addr p { margin: 0 0 5px; }
+  .rule1 { border-top: 3.5px solid ${BLUE}; margin-top: 10px; }
+  .rule2 { border-top: 1.5px solid ${BLUE}; margin-top: 3px; }
+
+  /* ── No. (left) and Date (right) ────────────── */
+  .top { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 22px; }
+  .top .f { margin-top: 0; flex: none; }
+  .top .no { width: 210px; }
+  .top .dt { width: 250px; }
+  .top .no .f-v { white-space: nowrap; word-break: normal; }
+
+  /* ── the form ───────────────────────────────── */
+  .f { display: flex; align-items: flex-end; gap: 8px; margin-top: 20px; min-width: 0; flex: 1; }
+  .f-l { color: ${BLUE}; font-weight: 600; white-space: nowrap; }
+  .f-v { flex: 1; min-width: 0; border-bottom: 1.3px solid ${BLUE}; min-height: 24px;
+         padding: 0 6px 1px; font-weight: 600; word-break: break-word; }
+  .f-s { color: ${BLUE}; font-weight: 700; white-space: nowrap; }
+  .pair { display: flex; gap: 26px; }
+  .hint { color: #5d6b82; font-size: 10.5px; margin: 4px 0 0 4px; }
+
+  .addr-lines {
+    flex: 1; min-height: 84px; line-height: 28px; padding: 0 6px; font-weight: 600;
+    background: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, ${BLUE} 27px, ${BLUE} 28.3px);
+    word-break: break-word;
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand img { width: 70px; height: auto; padding: 3px; background: #fff; border-radius: 6px; object-fit: contain; }
-  .brand h1 { margin: 0; font-size: 15px; letter-spacing: 1.2px; }
-  .brand p { margin: 0; font-size: 9px; opacity: 0.85; }
-  .tag { background: #fff; color: ${BLUE}; font-weight: 700; font-size: 10.5px;
-         padding: 3px 12px; border-radius: 14px; display: inline-block; }
-  .meta { text-align: right; font-size: 8.5px; opacity: 0.9; margin-top: 3px; }
-  .ref { font-size: 7.5px; opacity: 0.6; }
+  .f.top-align { align-items: flex-start; }
+  .f.top-align .f-l { line-height: 28px; }
 
-  .row { display: flex; gap: 8px; align-items: flex-start; }
-  .col { flex: 1; min-width: 0; }
-  .gap { height: 5px; }
+  .sign { display: flex; justify-content: space-between; margin-top: 70px; }
+  .sign div { color: ${BLUE}; font-weight: 600; text-align: center; }
+  .sign .line { width: 170px; border-top: 1.3px solid ${BLUE}; padding-top: 4px; }
 
-  .card { border: 0.5px solid ${DIVIDER}; border-radius: 6px; overflow: hidden; }
-  .card > h2 { margin: 0; padding: 3px 8px; font-size: 8px; color: #fff; background: ${BLUE}; }
-  .card.alt > h2 { background: ${DEEP}; }
-  .card-body { background: ${LIGHT}; }
-  .card.alt .card-body { background: #F8F9FA; }
-
-  .kv { display: flex; padding: 2.5px 8px; font-size: 7.5px; }
-  .kv-k { width: 60px; color: #616161; flex: none; }
-  .kv-v { flex: 1; text-align: right; color: #000; font-size: 8px; word-break: break-word; }
-
-  .sec { margin: 0 0 2px; padding: 3px 8px; border-radius: 4px;
-         background: ${BLUE}; color: #fff; font-size: 8.5px; font-weight: 700; }
-  .table { border: 0.5px solid ${DIVIDER}; border-radius: 4px; overflow: hidden; }
-  .amt { display: flex; justify-content: space-between; gap: 8px; padding: 2.8px 8px; font-size: 8px; }
-  .amt-l em { display: block; font-style: normal; font-size: 6.5px; color: #757575; }
-  .amt-alt { background: ${LIGHT}; }
-  .amt-head { background: ${BLUE}; color: #fff; font-weight: 700; }
-  .amt-total { background: ${DEEP}; color: #fff; font-weight: 700; }
-  .amt-head .amt-l em, .amt-total .amt-l em { color: #E0E0E0; }
-
-  .box { border: 0.5px solid; border-radius: 6px; overflow: hidden; }
-  .box > h3 { margin: 0; padding: 3px 8px; font-size: 8px; color: #fff; }
-  .sum { display: flex; justify-content: space-between; padding: 2.8px 8px; font-size: 7.5px; color: #616161; }
-  .sum span:last-child { font-weight: 700; color: #000; font-size: 8px; }
-  .grand { display: flex; justify-content: space-between; padding: 4px 8px; color: #fff; font-weight: 700; font-size: 8.5px; }
-
-  .ms { flex: 1; border: 0.5px solid; border-radius: 4px; padding: 4px 7px; }
-  .ms-l { font-size: 6.5px; font-weight: 700; }
-  .ms-d { font-size: 7.5px; margin-top: 1.5px; }
-
-  .terms { border: 0.5px solid ${DIVIDER}; border-radius: 6px; overflow: hidden; background: #F8F9FA; }
-  .terms > h2 { margin: 0; padding: 3px 8px; font-size: 7.5px; color: #fff; background: ${BLUE}; }
-  .terms ol { margin: 0; padding: 4px 8px 4px 20px; }
-  .terms li { font-size: 6.8px; color: #424242; margin-bottom: 1.5px; }
-
-  .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px; }
-  .sign b { font-size: 7.5px; }
-  .rule { width: 110px; height: 0.5px; background: #9E9E9E; margin-top: 14px; }
-  .note { font-size: 6.5px; color: #9E9E9E; text-align: center; }
-
-  .banner { background: ${DEEP}; color: #fff; border-radius: 6px; padding: 7px 16px;
-            display: flex; justify-content: space-between; align-items: center; }
-  .banner b { font-size: 11.5px; letter-spacing: 0.8px; }
-  .banner span { font-size: 14px; font-weight: 700; }
+  .foot { margin-top: 28px; text-align: center; font-size: 9px; color: #7b8798; }
 </style></head>
 <body>
 
-  <div class="bar">
-    <div class="brand">
-      ${logo ? `<img src="${esc(logo)}" alt="">` : ''}
-      <div><h1>${esc(company)}</h1><p>${esc(unit)}</p></div>
-    </div>
-    <div>
-      <div class="tag">QUOTATION</div>
-      <div class="meta">Date: ${dfmt(q.quotationDate)}</div>
-      ${ref ? `<div class="meta ref">Ref: ${esc(ref)}</div>` : ''}
-    </div>
-  </div>
-
-  <div class="gap"></div>
-
-  <div class="row">
-    <div class="col card"><h2>Customer Details</h2><div class="card-body">
-      ${kv('Name', q.customerName)}${kv('Mobile', q.mobileNumber)}${kv('Address', q.address)}
-    </div></div>
-    <div class="col card alt"><h2>Project Details</h2><div class="card-body">
-      ${kv('Project', q.projectName)}${kv('Plot No.', q.plotNumber)}
-      ${kv('Plot Size', `${nfmt(q.plotSize)} sq ft`)}${kv('Rate', `${inr(q.ratePerSqFt)} / sq ft`)}
-      ${kv('Prepared by', q.createdByName)}
-    </div></div>
-  </div>
-
-  <div class="gap"></div>
-
-  <div class="box" style="border-color:#CE93D8;background:${LIGHT_PURPLE}">
-    <h3 style="background:${PURPLE}">Payment Milestone Dates</h3>
-    <div class="row" style="padding:5px;gap:4px">
-      ${milestone('Booking Date', q.bookingDate, BLUE, LIGHT)}
-      ${milestone('Down Payment Date', q.downPaymentDate, GREEN, LIGHT_GREEN)}
-      ${milestone('Sale Deed Date', q.saleDeederDate, PURPLE, '#F3E5F5')}
+  <div class="om">|| Om Sai Ram ||</div>
+  <div class="head">
+    ${logo ? `<img src="${esc(logo)}" alt="Unity Realities">` : '<div class="name">UNITY REALITIES</div>'}
+    <div class="vr"></div>
+    <div class="addr">
+      <p><b>Office:</b> Shop No.6, Pancham Estate, Dixit Nagar, Nagpur - 440026.</p>
+      <p><b>Corporate Office:</b> Shop No. S01/A, Ekam Enclave Apartment, Near Dr. Babasaheb
+         Ambedkar Charitable Hospital, Nari Road, Nagpur - 440026.</p>
+      <p><b>Mob. No. 8237766051</b> &nbsp;|&nbsp; www.unityrealities.in</p>
     </div>
   </div>
+  <div class="rule1"></div><div class="rule2"></div>
 
-  <div class="gap"></div>
-
-  <div class="row">
-    <div class="col" style="flex:5">
-      <div class="sec">1. Plot Amount</div>
-      <div class="table">
-        ${amt('Description', 'Amount', { head: true })}
-        ${amt('Total Plot Amount', q.totalPlotAmount, { sub: `${nfmt(q.plotSize)} sq ft × ${inr(q.ratePerSqFt)}` })}
-        ${amt(`Down Payment (${q.downPaymentOption || '20%'})`, q.downPayment, { alt: true })}
-        ${amt('Booking', q.bookingAmount)}
-        ${amt('Remaining', q.loanAmount)}
-      </div>
-      <div class="gap"></div>
-
-      <div class="sec">2. Stamp Duty &amp; Registration</div>
-      <div class="table">
-        ${amt('Description', 'Amount', { head: true })}
-        ${amt(`Stamp Duty (${Math.round(q.stampDutyPercent)}%)`, q.stampDutyAmount)}
-        ${amt('Registration', q.registrationAmount, { alt: true })}
-        ${amt('Stamp + Reg Total', stampReg, { total: true })}
-      </div>
-      <div class="gap"></div>
-
-      <div class="sec">3. Administrative Charges</div>
-      <div class="table">
-        ${amt('Description', 'Amount', { head: true })}
-        ${amt('Legal & 7/12', q.mutation)}
-        ${amt('Maintenance (3 Years)', q.societyCharges)}
-        ${amt('Admin Total', q.adminTotal, { total: true })}
-      </div>
-    </div>
-
-    <div class="col" style="flex:4">
-      <div class="box" style="border-color:#A5D6A7;background:${LIGHT_GREEN}">
-        <h3 style="background:${GREEN}">Payment Summary</h3>
-  
-       
-              ${sum('Plot Amount', q.totalPlotAmount)}
-              ${amt('Stamp + Reg Total', stampReg)}
-        ${sum('Admin Charges', q.adminTotal)}
-        
-        <div class="grand" style="background:${GREEN}"><span>GRAND TOTAL</span><span>${inr(q.finalTotalAmount)}</span></div>
-      </div>
-      <div class="gap"></div>
-
-    
-    </div>
+  <div class="top">
+    <div class="f no"><span class="f-l">No.</span><span class="f-v">${esc(ref)}</span></div>
+    <div class="f dt"><span class="f-l">Date</span><span class="f-v">${esc(dfmt(q.quotationDate))}</span></div>
   </div>
 
-  <div class="gap"></div>
+  ${field('Name', q.customerName)}
 
-  <div class="banner"><b>FINAL TOTAL AMOUNT</b><span>${inr(q.finalTotalAmount)}</span></div>
-
-  <div class="gap"></div>
-
-  <div class="terms">
-    <h2>TERMS &amp; CONDITIONS</h2>
-    <ol>${TERMS.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+  <div class="f top-align">
+    <span class="f-l">Address</span>
+    <span class="addr-lines">${esc(q.address || '')}</span>
   </div>
+
+  ${pair(field('Mouza', q.mouza), field('Khasra No.', q.khasra))}
+  ${pair(field('Plot No.', q.plotNumber), field('Square Feet', sq(q.plotSize)))}
+  ${field('Project Name', q.projectName)}
+  ${field('Rate', `${inr(q.ratePerSqFt)} / sq ft`)}
+  ${field('Total Payment', inr(q.totalPlotAmount))}
+  ${field('Down Payment', inr(q.downPayment), { suffix: `${downPct}%` })}
+  ${field('Balance Payment', inr(balance))}
+  ${field(`EMI (${months} months)`, inr(emi))}
+  ${field('EMI Date', `${ordinal(day)} of every month`)}
+  <div class="hint">First EMI: ${esc(dfmt(q.firstEmiDate) || '—')} &nbsp;·&nbsp; Last EMI: ${esc(dfmt(q.lastEmiDate) || '—')}</div>
+  ${field('Sale Deed Date', dfmt(q.saleDeederDate))}
 
   <div class="sign">
-    <div><b>Customer Signature</b><div class="rule"></div></div>
-    <div class="note">This is a computer-generated quotation.<br>All amounts are in Indian Rupees (₹).</div>
-    <div style="text-align:right"><b>Authorized Signature</b><div class="rule"></div></div>
+    <div class="line">Company Signature</div>
+    <div class="line">Customer Signature</div>
   </div>
+
+  <div class="foot">This is a computer-generated quotation. All amounts are in Indian Rupees (₹).</div>
 
 </body></html>`;
 }
 
 /**
- * Inline the logo as a data URI.
- *
- * The bundler turns the import into a root-relative URL ("/assets/logo-
- * a1b2c3.jpeg"), which the print window cannot resolve — about:blank has
- * no base to resolve it against. Inlining also removes the network fetch
- * that would otherwise still be in flight when the print sheet opens.
- * Converted once per session and cached; if the fetch fails we fall back
- * to an absolute URL, which at least renders on screen.
+ * Inline the logo as a data URI (the print window is about:blank and
+ * cannot resolve a root-relative bundler URL). Cached per session.
  */
 let cachedLogo = null;
 
@@ -291,12 +505,8 @@ async function logoAsDataUrl(src) {
 
 /**
  * Write the document into a new window, optionally printing it.
- *
- * The window has to be opened synchronously, before the first await, or
- * the pop-up blocker treats it as unrelated to the click that started it.
- * Printing waits on the images rather than on w.onload: after a
- * document.write the load event can fire before the handler is attached,
- * and then the print sheet never opens at all.
+ * The window must be opened synchronously, before the first await, or the
+ * pop-up blocker treats it as unrelated to the click.
  */
 async function openQuotationWindow(q, opts = {}, print) {
   const w = window.open('', '_blank', 'width=900,height=1200');
@@ -316,7 +526,7 @@ async function openQuotationWindow(q, opts = {}, print) {
   return true;
 }
 
-/** Open the print sheet. Returns false if the pop-up was blocked. */
+/** Open the print sheet. Resolves false if the pop-up was blocked. */
 export function printQuotation(q, opts) {
   return openQuotationWindow(q, opts, true);
 }

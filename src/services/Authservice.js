@@ -18,8 +18,8 @@ import {
 import { db } from '../firebase/config';
 import { userFromDoc, userToMap, canSignIn } from '../models/Usermodel';
 
-const USERS = 'shubhaarambh_user';
-const SESSION_KEY = 'shubhaarambh_session_user';
+const USERS = 'unity_user';
+const SESSION_KEY = 'unity_session_user';
 
 const usersRef = () => collection(db, USERS);
 

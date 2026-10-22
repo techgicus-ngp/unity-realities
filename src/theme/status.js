@@ -69,26 +69,30 @@ import { PLOT_TONES } from './tokens';
    the pale paper the printed layout sheet uses for unsold land, which
    is what the status view wants — an unsold plot should read as empty,
    not as another shade of the same tan. */
-export const STATUS = {
+export const STATUS = { 
   available: {
     key: 'available', doc: 'Available', label: 'Available', legacy: [],
     tones: PLOT_TONES, fill: '#fffef8', dot: '#D2A68D', ink: '#1A1208',
+  },
+  token: {
+    key: 'token', doc: 'Token', label: 'Token', legacy: ['booked'],
+    fill: '#000000', dot: '#000000', ink: '#FFFFFF',
   },
   booked: {
     key: 'booked', doc: 'Booked', label: 'Booked', legacy: [],
     fill: '#28465e', dot: '#28465e', ink: '#FFFFFF',
   },
-  // partial: {
-  //   key: 'partial', doc: 'Partial Payment', label: 'Part paid', legacy: ['reserved'],
-  //   fill: '#FFC107', dot: '#FFC107', ink: '#1A1208',
-  // },
+  partial: {
+    key: 'partial', doc: 'Partial Payment', label: 'Part paid', legacy: ['reserved'],
+    fill: '#056017', dot: '#056017', ink: '#1A1208',
+  },
   agreement: {
     key: 'agreement', doc: 'Agreement', label: 'Agreement', legacy: [],
-    fill: '#9fc03c', dot: '#9fc03c', ink: '#FFFFFF',
+    fill: '#d20a03', dot: '#d20a03', ink: '#FFFFFF',
   },
   sold: {
     key: 'sold', doc: 'Sold', label: 'Sold', legacy: [],
-    fill: '#F44336', dot: '#F44336', ink: '#FFFFFF',
+    fill: '#eb857d', dot: '#eb857d', ink: '#FFFFFF',
   },
 };
 
