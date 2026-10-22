@@ -53,38 +53,39 @@
 // /** A key → the string the Flutter app expects to read back. */
 // export const statusDocValue = (key) => (STATUS[key] || STATUS.available).doc;
 
-
 import { PLOT_TONES } from './tokens';
 
-/* The five sale states, in the order a plot moves through them.
+/* The six sale states, in the same order as the Flutter app's
+   `PlotData.statuses` list (Available, Booked, Token, Part Payment,
+   Agreement, Sold).
 
    `doc` is what lands in Firestore, matching the Flutter app's
    `PlotData.status` strings exactly, so the web viewer and the Flutter
    viewer read and write the same documents. `legacy` catches values
-   saved before Token / Partial Payment / Agreement existed.
+   saved before Token / Part Payment / Agreement existed.
 
    Colours match PlotData.getPlotColor() so a plot means the same thing
    in both apps. Available carries BOTH: `tones` is the master plan's
    alternating tan, used whenever the status view is off, and `fill` is
    the pale paper the printed layout sheet uses for unsold land, which
-   is what the status view wants — an unsold plot should read as empty,
+   is what the status view wants. An unsold plot should read as empty,
    not as another shade of the same tan. */
-export const STATUS = { 
+export const STATUS = {
   available: {
     key: 'available', doc: 'Available', label: 'Available', legacy: [],
     tones: PLOT_TONES, fill: '#fffef8', dot: '#D2A68D', ink: '#1A1208',
-  },
-  token: {
-    key: 'token', doc: 'Token', label: 'Token', legacy: ['booked'],
-    fill: '#000000', dot: '#000000', ink: '#FFFFFF',
   },
   booked: {
     key: 'booked', doc: 'Booked', label: 'Booked', legacy: [],
     fill: '#28465e', dot: '#28465e', ink: '#FFFFFF',
   },
+  token: {
+    key: 'token', doc: 'Token', label: 'Token', legacy: [],
+    fill: '#000000', dot: '#000000', ink: '#FFFFFF',
+  },
   partPayment: {
-    key: 'part payment', doc: 'Part Payment', label: 'Part Payment', legacy: ['reserved'],
-    fill: '#056017', dot: '#056017', ink: '#1A1208',
+    key: 'partPayment', doc: 'Part Payment', label: 'Part Payment', legacy: ['reserved'],
+    fill: '#056017', dot: '#056017', ink: '#FFFFFF',
   },
   agreement: {
     key: 'agreement', doc: 'Agreement', label: 'Agreement', legacy: [],
@@ -98,18 +99,27 @@ export const STATUS = {
 
 export const STATUS_KEYS = Object.keys(STATUS);
 
+/* Lookup is case-insensitive. Real names (property key, `key`, and `doc`)
+   are registered first. Legacy aliases come last and never override a
+   real state, so the result doesn't depend on object order. */
 const LOOKUP = (() => {
   const m = new Map();
   STATUS_KEYS.forEach((k) => {
     const s = STATUS[k];
-    m.set(k, k);
+    m.set(k.toLowerCase(), k);
+    m.set(s.key.toLowerCase(), k);
     m.set(s.doc.toLowerCase(), k);
-    s.legacy.forEach((l) => m.set(l.toLowerCase(), k));
+  });
+  STATUS_KEYS.forEach((k) => {
+    STATUS[k].legacy.forEach((l) => {
+      const lk = l.toLowerCase();
+      if (!m.has(lk)) m.set(lk, k);
+    });
   });
   return m;
 })();
 
-/** Anything Firestore hands us → one of the five keys. */
+/** Anything Firestore hands us → one of the six keys. */
 export const statusKeyOf = (value) =>
   LOOKUP.get(String(value || '').trim().toLowerCase()) || 'available';
 
