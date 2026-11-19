@@ -22,6 +22,13 @@ const PLAIN_FILL = '#F1ECE2';
    layoutBoundary. Change this one constant to recolour it. */
 const LAYOUT_BG = '#3b3b3b';
 
+/* A customer's own plots, when the compare page asks for them to be
+   picked out. Gold on the plan, dark ink on top, and nothing else dimmed:
+   the point is to find them, not to hide the rest. */
+const HIT_FILL = '#F6B21A';
+const HIT_STROKE = '#FFE08A';
+const HIT_INK = '#1A1208';
+
 /* ── PLOT NUMBER ORIENTATION ─────────────────────────────────────────
    Orientation of a plot, in degrees, for SVG rotate().
    Sweeps the polygon through 0–89° and keeps the angle where its
@@ -54,7 +61,7 @@ function plotAngle(pts) {
 }
 
 export default function PlanContent({
-  layout, selected, matches, status, showNumbers, showStatus, hover, setHover, onPick,
+  layout, selected, matches, highlight, status, showNumbers, showStatus, hover, setHover, onPick,
 }) {
   /* One reading of a plot's status, shared by the shape and its number:
      they have to agree, or a plot ends up with dark ink on a red fill.
@@ -89,7 +96,7 @@ export default function PlanContent({
     (layout.plots || []).forEach((f) => m.set(f.i, plotAngle(f.pts)));
     return m;
   }, [layout.plots]);
-const ROAD_FONT_BOOST = 2;
+const ROAD_FONT_BOOST = 0.5;
   return (
     <g>
       {groundPath && (
@@ -108,6 +115,7 @@ const ROAD_FONT_BOOST = 2;
         const isPlot = f.kind === 'plot';
         const isSel = isPlot && selected === f.name;
         const dim = isPlot && matches && !matches.has(f.name);
+        const hit = isPlot && highlight && highlight.has(f.name);
 
         let fill = k.fill;
         if (isPlot) {
@@ -116,6 +124,7 @@ const ROAD_FONT_BOOST = 2;
           const st = stateOf(f.name);
           fill = (showStatus && st.fill) || PLAIN_FILL;
         }
+        if (hit) fill = HIT_FILL;
         if (isSel) fill = SOCKET_FILL;   // the raised copy carries the real colour
 
         return (
@@ -125,9 +134,9 @@ const ROAD_FONT_BOOST = 2;
             d={pathWithHoles(f.pts, f.holes)}
             fill={fill}
             fillRule="evenodd"
-            stroke={isSel ? '#E9C6F2' : k.stroke}
-            strokeWidth={isSel ? SEL_STROKE : PLOT_STROKE}
-            fillOpacity={dim ? DIM_FILL : 0.92}
+            stroke={isSel ? '#E9C6F2' : hit ? HIT_STROKE : k.stroke}
+            strokeWidth={isSel ? SEL_STROKE : hit ? PLOT_STROKE * 3 : PLOT_STROKE}
+            fillOpacity={dim ? DIM_FILL : hit ? 1 : 0.92}
             strokeOpacity={dim ? DIM_EDGE : 1}
             opacity={hover === f.name && isPlot ? 0.85 : 1}
             onMouseEnter={() => isPlot && setHover(f.name)}
@@ -146,7 +155,8 @@ const ROAD_FONT_BOOST = 2;
            takes whatever the status says is legible on it — and stays
            dark on an off-white plot, which has no status to ask. */
         const st = showStatus ? stateOf(f.name) : null;
-        const ink = (st && st.fill && st.ink) || '#1A1208';
+        const lit = highlight && highlight.has(f.name);
+        const ink = lit ? HIT_INK : (st && st.fill && st.ink) || '#1A1208';
         const [x, y] = f.lp;
         const ang = plotAngles.get(f.i) || 0;   // number runs along the plot line
         return (

@@ -170,3 +170,22 @@ export function watchEmployees(onChange, onError) {
     onError,
   );
 }
+
+// ─── Second factor for /sanctioned ──────────────────────────────────────
+/** Re-reads the signed-in user's document and checks the password typed
+    at the sanctioned gate. Also re-checks the access flag, so a revoked
+    user is refused even on a still-valid browser session. */
+export async function verifySanctionedAccess(uid, password) {
+  const snap = await getDoc(doc(db, USERS, uid));
+  if (!snap.exists()) throw new Error('Account not found.');
+  const data = snap.data();
+  const user = userFromDoc(data, snap.id);
+  if (!canSignIn(user)) throw new Error('Access not granted.');
+  if (!(user.role === 'admin' || user.sanctionedAccess === true)) {
+    throw new Error('This account is not allowed to open the sanctioned layouts.');
+  }
+  if ((data.password ?? '') !== String(password).trim()) {
+    throw new Error('Wrong password.');
+  }
+  return true;
+}

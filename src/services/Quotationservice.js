@@ -7,6 +7,7 @@ import {
 
 import { db } from '../firebase/config';
 import { MAP_ID } from '../config/site';
+import { PAIRS } from '../config/maps';
 import { fromDoc } from '../lib/Quote';
 
 /**
@@ -48,6 +49,18 @@ export async function getQuotation(id) {
 export function watchAllQuotations(onChange, onError) {
   return onSnapshot(
     query(col(), orderBy('quotationDate', 'desc')),
+    (snap) => onChange(snap.docs.map((d) => fromDoc(d.data(), d.id))),
+    onError,
+  );
+}
+
+
+/** Live list of every quotation, for matching customers to plots. Unlike
+    watchAllQuotations this does not orderBy('quotationDate'), which would
+    silently drop records that have no such field. Returns the unsubscribe fn. */
+export function watchQuotations(onChange, onError) {
+  return onSnapshot(
+    col(),
     (snap) => onChange(snap.docs.map((d) => fromDoc(d.data(), d.id))),
     onError,
   );
@@ -108,4 +121,20 @@ export async function fetchMaps() {
   return maps
     .filter(Boolean)
     .filter(map => map.isEnabled !== false);
+}
+
+/**
+ * The map documents of every sanctioned and not-sanctioned side, for
+ * the /sanctioned page. Used only behind its gate.
+ */
+export async function fetchPairMaps() {
+  const ids = [...new Set(PAIRS.flatMap((p) => [p.aId, p.bId]))];
+  const rows = await Promise.all(ids.map(async (id) => {
+    const snap = await getDoc(doc(db, 'maps', id));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    if (data.isEnabled === false) return null;
+    return { ...data, id: snap.id };
+  }));
+  return rows.filter(Boolean);
 }

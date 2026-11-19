@@ -14,6 +14,11 @@ import QuotationsListPage from './pages/Quotationspage';
 import QuotationPage from './pages/Quotationpage';
 import QuotationFormPage from './pages/Quotationformpage';
 import RequireAuth from './auth/RequireAuth';
+import ComparePage from './pages/ComparePage';
+import ProjectEntry from './pages/ProjectEntry';
+import ShareEntry from './pages/ShareEntry';
+import SanctionedHome from './pages/SanctionedHome';
+import RequireSanctioned from './auth/RequireSanctioned';
 
 /**
  * A quotation gets its own URL rather than living in component state.
@@ -35,15 +40,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterEmployeePage />} />
-            <Route path="/share/maps/:mapId/*" element={<PlanPage share />} />
+            <Route path="/share/maps/:mapId/*" element={<ShareEntry />} />
 
             <Route path="/" element={<RequireAuth><EmployeeHome /></RequireAuth>} />
 <Route path="/quotations" element={<RequireAuth><QuotationsListPage /></RequireAuth>} />
 <Route path="/quotations/new" element={<RequireAuth><QuotationFormPage /></RequireAuth>} />
 <Route path="/quotations/:id" element={<RequireAuth><QuotationPage /></RequireAuth>} />
 <Route path="/quotations/:id/edit" element={<RequireAuth><QuotationFormPage /></RequireAuth>} />
-<Route path="/maps/:mapId/*" element={<RequireAuth><PlanPage /></RequireAuth>} />
-
+<Route path="/maps/:mapId/*" element={<RequireAuth><ProjectEntry /></RequireAuth>} />
+<Route path="/sanctioned" element={<RequireAuth><RequireSanctioned><SanctionedHome /></RequireSanctioned></RequireAuth>} />
+<Route path="/sanctioned/:aId/:bId" element={<RequireAuth><RequireSanctioned><ComparePage /></RequireSanctioned></RequireAuth>} />
+<Route path="/compare/*" element={<Navigate to="/sanctioned" replace />} />
 <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </ToastProvider>

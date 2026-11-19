@@ -21,6 +21,7 @@ export function userFromDoc(data, id) {
     role: data.role ?? 'employee',
     createdDate: parseDate(data.createdDate),
     isAccessGranted: data.isAccessGranted ?? false,
+    sanctionedAccess: data.sanctionedAccess === true,
   };
 }
 
@@ -46,6 +47,7 @@ export function userToMap(user) {
       ? user.createdDate.toISOString()
       : user.createdDate,
     isAccessGranted: user.isAccessGranted,
+    sanctionedAccess: user.sanctionedAccess === true,
   };
 }
 
@@ -66,6 +68,10 @@ export function newEmployee({ uid, email, name, groupName = '', password }) {
 export const isAdmin = (u) => !!u && u.role === 'admin';
 export const isGuest = (u) => !!u && u.role === 'guest';
 export const isEmployee = (u) => !!u && u.role === 'employee';
+
+/** Who may enter /sanctioned: admins, or users whose document carries
+    sanctionedAccess: true. Set that field in Firestore to grant it. */
+export const canViewSanctioned = (u) => isAdmin(u) || u?.sanctionedAccess === true;
 
 /** Admins and guests always pass; employees need the granted flag. */
 export const canSignIn = (u) => isAdmin(u) || isGuest(u) || u?.isAccessGranted === true;

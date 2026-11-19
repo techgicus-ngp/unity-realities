@@ -17,6 +17,8 @@ import { useAuth } from '../context/Authcontext';
 import { useIsWide } from '../hooks/useMediaQuery';
 import { fetchMaps, watchEmployeeQuotations } from '../services/Quotationservice';
 import { userUid } from '../lib/Quote';
+import { canViewSanctioned } from '../models/Usermodel';
+import { PAIRS } from '../config/maps';
 import { QuotationCard, MapCard } from '../components/Cards';
 import {
   Avatar, DocIcon, EmptyState, FilterChip, HomePartsStyles, MapIcon,
@@ -41,6 +43,7 @@ const TABS = [
   { key: 'quotations', label: 'Quotations', icon: <DocIcon /> },
   // { key: 'visits', label: 'Site visit', icon: <CameraIcon /> },
 ];
+
 
 export default function EmployeeHome() {
   const { user, signOut } = useAuth();
@@ -123,6 +126,7 @@ export default function EmployeeHome() {
   );
 
   const openMap = (map) => navigate(`/maps/${map.id}`);
+  const showSanctioned = canViewSanctioned(user) && PAIRS.length > 0;
   const openQuotation = (q) => navigate(`/quotations/${q.id}`);
 
   /* The rail shows a count beside Quotations, so TABS is rebuilt here
@@ -165,20 +169,28 @@ export default function EmployeeHome() {
         </div>
       </div>
 
-      {mapsLoading ? <Spinner /> : filteredMaps.length === 0 ? (
-        <EmptyState
-          searching={!!mapSearch}
-          title={mapSearch ? 'No maps match that search' : 'No maps yet'}
-          body={mapSearch
-            ? 'Try a shorter or different term.'
-            : 'Maps appear here once an admin publishes them.'}
-        />
-      ) : (
-        <div className="cardgrid">
-          {filteredMaps.map((m, i) => (
-            <MapCard key={m.id} map={m} index={i} onOpen={() => openMap(m)} />
-          ))}
-        </div>
+      {mapsLoading ? <Spinner /> : (
+        <>
+          {filteredMaps.length === 0 ? (
+            <EmptyState
+              searching={!!mapSearch}
+              title={mapSearch ? 'No maps match that search' : 'No maps yet'}
+              body={mapSearch
+                ? 'Try a shorter or different term.'
+                : 'Maps appear here once an admin publishes them.'}
+            />
+          ) : null}
+
+          {filteredMaps.length > 0 && (
+            <div className="cardgrid">
+              {filteredMaps.map((m, i) => (
+                <MapCard key={m.id} map={m} index={i} onOpen={() => openMap(m)} />
+              ))}
+            </div>
+          )}
+
+         
+        </>
       )}
     </div>
   );

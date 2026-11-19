@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { subscribeToMapPlots, loadMapMeta } from '../firebase/mapRepo';
 import { writePlotStatus } from '../firebase/plotsRepo';
 import { buildLayout } from '../data/buildLayout';
-import { MAP_ID } from '../config/site';
+import { DEFAULT_MAP_ID } from '../config/site';
 
 /**
  * The whole plan, live from Firestore.
@@ -12,7 +12,7 @@ import { MAP_ID } from '../config/site';
  * refresh, and vice versa. Local edits paint immediately and are dropped
  * as soon as the snapshot confirms them.
  */
-export function useMapLayout(mapId = MAP_ID) {
+export function useMapLayout(mapId = DEFAULT_MAP_ID) {
   const [docs, setDocs] = useState(null);
   const [meta, setMeta] = useState({});
   const [source, setSource] = useState(null);

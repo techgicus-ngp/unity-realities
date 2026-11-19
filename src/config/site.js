@@ -1,81 +1,61 @@
-// /* ═══════════════════════════════════════════════════════════════
-//    Site settings.
-//    ═══════════════════════════════════════════════════════════════ */
+/* Site settings. Everything here is read from .env at build time. */
 
-// /** The Firestore map this viewer opens — the same id the Flutter app
-//     (`lotusvencon`, screens/map_viewer_screen.dart) uses. Everything the
-//     plan draws comes out of this document and its plots. */
-// export const MAP_ID = import.meta.env.VITE_MAP_ID || 'BT1meSHc2TcPf3f0VOrb';
-
-// /** Maps JavaScript API key. Needs the Maps JavaScript API enabled and
-//     this origin allowed as an HTTP referrer. */
-// export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-// /** Optional Cloud-console Map ID, for a custom basemap style. Not needed
-//     for turning or tilting — the map container itself is what turns. */
-// export const GOOGLE_MAP_STYLE_ID = import.meta.env.VITE_GOOGLE_MAP_STYLE_ID || '';
-
-// /** How far past the plan's edge the drawing window may reach (metres),
-//     and the largest texture we will ask a browser for on any one side. */
-// export const PAD = 40;
-// export const MAX_SHEET = 4096;
-
-
-/* ═══════════════════════════════════════════════════════════════
-   Site settings.
-   ═══════════════════════════════════════════════════════════════ */
-
-/** The Firestore map this viewer opens — the same id the Flutter app
-    (`lotusvencon`, screens/map_viewer_screen.dart) uses. Everything the
-    plan draws comes out of this document and its plots. */
-const rawMapIds = import.meta.env.VITE_MAP_ID;
-
-export const MAP_ID = rawMapIds
+/* "{a,b,c}" or "a, b, c"  ->  ['a','b','c']. A missing variable gives []
+   instead of crashing the whole app. */
+const toList = (v) => String(v || '')
   .replace(/[{}]/g, '')
   .split(',')
-  .map(id => id.trim())
+  .map((id) => id.trim())
   .filter(Boolean);
 
-/** Where the plots for that map are kept.
+/** Sanctioned and not-sanctioned map ids. They are paired by position:
+    the 1st sanctioned map goes with the 1st not-sanctioned map, and so on. */
+export const SANCTIONED_IDS = toList(import.meta.env.VITE_SANCTIONED_MAP_IDS);
+export const NOT_SANCTIONED_IDS = toList(import.meta.env.VITE_NOT_SANCTIONED_MAP_IDS);
+
+/** The normal maps. Every id listed in VITE_MAP_ID is shown on the home
+    page and opens as a single, complete layout, even if the same id is
+    also in the sanctioned / not-sanctioned lists. */
+export const MAP_ID = toList(import.meta.env.VITE_MAP_ID);
+
+/** Sanctioned / not-sanctioned ids that are NOT listed in VITE_MAP_ID are
+    restricted: they open only from /sanctioned, behind its own sign-in.
+    An id you also list in VITE_MAP_ID is open to every signed-in user. */
+export const PROTECTED_MAP_IDS = new Set(
+  [...SANCTIONED_IDS, ...NOT_SANCTIONED_IDS].filter((id) => !MAP_ID.includes(id)),
+);
+export const isProtectedMap = (id) => PROTECTED_MAP_IDS.has(id);
+
+/** The single id that code with no explicit map falls back to.
+    MAP_ID is a LIST, so it must never be used where one id is expected. */
+export const DEFAULT_MAP_ID = MAP_ID[0] || SANCTIONED_IDS[0] || '';
+
+/** Where the plots of a map are kept. The listener attaches to this at
+ *  once; discovery in mapRepo only runs if it comes back empty.
  *
- * Discovery still exists in mapRepo, but it costs a round trip per shape
- * and it runs before the real read can start. The Flutter app's current
- * layout is known, so state it: the listener attaches immediately and
- * the probes only run if this comes back empty. Change the schema in
- * Flutter and the first empty snapshot re-discovers it — this is a
- * head start, not a contract.
- *
- * kind: 'collection' → { name }          maps/<id>/<name>
- *       'query'      → { col, field }    <col> where <field> == <id>
- *       'embedded'   → { key }           maps/<id>.<key>[]
+ *  kind: 'collection' -> { name }       maps/<id>/<name>
+ *        'query'      -> { col, field } <col> where <field> == <id>
+ *        'embedded'   -> { key }        maps/<id>.<key>[]
  */
 export const PLOT_SOURCE = {
   kind: 'collection',
   name: 'plots',
-  label: `maps/${MAP_ID}/plots`,
+  label: `maps/${DEFAULT_MAP_ID || '<id>'}/plots`,
 };
 
-/** Where the camera starts, before any plot data has arrived.
- *
- * The map is created the moment the Maps script is ready rather than
- * waiting on Firestore, so it needs a centre up front. The site does not
- * move — these are the Chicholi ground anchors averaged. The view is
- * re-fitted to the real bounds once the layout builds. */
+/** Where the camera starts, before any plot data has arrived. */
 export const HOME_VIEW = {
   center: { lat: 21.190375, lng: 78.983383 },
   zoom: 18,
 };
 
-/** Maps JavaScript API key. Needs the Maps JavaScript API enabled and
-    this origin allowed as an HTTP referrer. */
+/** Maps JavaScript API key. */
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-/** Optional Cloud-console Map ID, for a custom basemap style. Not needed
-    for turning or tilting — the map container itself is what turns. */
+/** Cloud-console Map ID. It must be a VECTOR map for turning and tilting. */
 export const GOOGLE_MAP_STYLE_ID = import.meta.env.VITE_GOOGLE_MAP_STYLE_ID;
 
 /** How far past the plan's edge the drawing window may reach (metres),
-    and the largest texture we will ask a browser for on any one side. */
+    and the largest texture asked of a browser on any one side. */
 export const PAD = 40;
 export const MAX_SHEET = 4096;
-

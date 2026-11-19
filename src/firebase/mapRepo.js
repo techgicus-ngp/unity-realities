@@ -121,7 +121,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { mapDoc, mapSubcollection } from './paths';
-import { MAP_ID, PLOT_SOURCE } from '../config/site';
+import { DEFAULT_MAP_ID, PLOT_SOURCE } from '../config/site';
 import { PlotData } from '../models/PlotData';
 
 /**
@@ -164,14 +164,14 @@ function mapDocSnap(mapId) {
 }
 
 /** The map document itself — title, mouza, whatever else it carries. */
-export async function loadMapMeta(mapId = MAP_ID) {
+export async function loadMapMeta(mapId = DEFAULT_MAP_ID) {
   const snap = await mapDocSnap(mapId);
   return snap && snap.exists() ? snap.data() : {};
 }
 
 /* ---- discovery, in parallel ---------------------------------------- */
 
-export async function resolvePlotSource(mapId = MAP_ID) {
+export async function resolvePlotSource(mapId = DEFAULT_MAP_ID) {
   const subs = SUBCOLLECTIONS.map(async (name) => {
     const probe = await getDocs(query(mapSubcollection(name, mapId), limit(1)));
     return probe.empty ? null
@@ -244,7 +244,7 @@ function listen(mapId, source, onData, onError) {
  * Each PlotData carries `docPath`, so a status written back lands on the
  * document it came from — whatever shape the data turned out to be in.
  */
-export async function subscribeToMapPlots(mapId = MAP_ID, onData, onError) {
+export async function subscribeToMapPlots(mapId = DEFAULT_MAP_ID, onData, onError) {
   let alive = true;
   let stop = () => {};
   let settled = false;          // a source has produced plots; stop second-guessing

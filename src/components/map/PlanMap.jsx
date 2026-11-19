@@ -52,7 +52,13 @@ export const easeInOut = (t) => (t < 0.5 ? 4 * t ** 3 : 1 - ((-2 * t + 2) ** 3) 
 const MAP_BG = '#000';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-
+const MAP_SINGLETON = (() => {
+  if (typeof window === 'undefined') return { map: null, el: null };
+  if (!window.__PLAN_MAP_SINGLETON__) {
+    window.__PLAN_MAP_SINGLETON__ = { map: null, el: null };
+  }
+  return window.__PLAN_MAP_SINGLETON__;
+})();
 /* ── ONE PLACE FRAMES THE MAP ────────────────────────────────────────
    This file. fitPlan for the whole layout, flyTo for a pick, and
    nothing else may call fitBounds or setZoom on this map — a second
@@ -498,8 +504,9 @@ function Compass({ mapRef, camRef, selectedRef, onReset }) {
  * down, so the toolbar search and the panel stack instead of fighting.
  */
 export default function PlanMap({
-  layout, selected, onSelect, matches, status, mapRef, fitRef, onReady,
+  layout, selected, onSelect, matches, highlight, status, mapRef, fitRef, onReady,
   showNumbers, setShowNumbers, showStatus, setShowStatus, reserve, share = false,
+  mapKey = 'default',
 }) {
   const viewRef = useRef(null);
   const hostRef = useRef(null);
@@ -513,6 +520,12 @@ export default function PlanMap({
   const wheelRef = useRef(0);
   const flyRef = useRef(0);
   const winRef = useRef(null);
+
+   const insideMe = useCallback((e) => {
+    const r = viewRef.current && viewRef.current.getBoundingClientRect();
+    return !!r && e.clientX >= r.left && e.clientX <= r.right
+      && e.clientY >= r.top && e.clientY <= r.bottom;
+  }, []);
 
   /* the wall and dimension SVGs, written to directly rather than
      re-rendered — see paintWalls / paintDims */
@@ -1368,8 +1381,8 @@ const canStatus = true;
     const pts = new Map();
     let start = null;
 
-    const onDown = (e) => {
-      if (e.pointerType !== 'touch') return;
+   const onDown = (e) => {
+      if (e.pointerType !== 'touch' || !insideMe(e)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2) {
         const [p, q] = [...pts.values()];
@@ -1427,7 +1440,7 @@ const canStatus = true;
       document.removeEventListener('gesturestart', onGesture, { capture: true });
       document.removeEventListener('gesturechange', onGesture, { capture: true });
     };
-  }, [selected, mapRef, zoomAtPlot, stopFly, touched]);
+  }, [selected, mapRef, zoomAtPlot, stopFly, touched, insideMe])
 
   useEffect(() => { selRef.current = selected; }, [selected]);
   useEffect(() => { if (!selected) setSpin(false); }, [selected, setSpin]);
@@ -1811,35 +1824,57 @@ const canStatus = true;
   }, [turned, selected]);
 
   /* the map itself */
+  /* the map itself: built ONCE per page session, then only re-parented.
+     No cleanup on purpose. Destroying the map here would force the next
+     mount to construct (and be billed for) a new one. */
+    /* the map itself: built ONCE per mapKey, then only re-parented.
+     No cleanup on purpose. */
+     const MAP_POOL = (() => {
+  if (typeof window === 'undefined') return {};
+  if (!window.__PLAN_MAP_POOL__) window.__PLAN_MAP_POOL__ = {};
+  return window.__PLAN_MAP_POOL__;
+})();
   useEffect(() => {
     if (!maps || !hostRef.current) return;
-    if (mapRef.current) { setMap(mapRef.current); return; }
+    const slot = MAP_POOL[mapKey];
+
+    /* this host already holds its map: just publish it */
+    if (slot && slot.el.parentNode === hostRef.current) {
+      mapRef.current = slot.map;
+      setMap(slot.map);
+      return;
+    }
+
+    /* the map exists from an earlier mount: move it here, do NOT construct */
+    if (slot) {
+      hostRef.current.appendChild(slot.el);
+      mapRef.current = slot.map;
+      setMap(slot.map);
+      maps.event.trigger(slot.map, 'resize');
+      if (!selRef.current) fitPlan(slot.map);
+      onReady();
+      return;
+    }
+
+    /* first time for this key */
+    const el = document.createElement('div');
+    el.style.cssText = 'position:absolute;inset:0;';
+    hostRef.current.appendChild(el);
+
     const centre = toLL((bounds.x0 + bounds.x1) / 2, (bounds.y0 + bounds.y1) / 2);
-    const m = new maps.Map(hostRef.current, {
+
+    /* DEV ONLY: counts every real new Map(). Remove before shipping. */
+    if (import.meta.env.DEV) {
+      window.__MAP_LOADS__ = (window.__MAP_LOADS__ || 0) + 1;
+      // eslint-disable-next-line no-console
+      console.warn(`🗺️ new Map() #${window.__MAP_LOADS__} (key: ${mapKey})`);
+    }
+
+    const m = new maps.Map(el, {
       center: centre,
-      /* A starting value only — fitPlan overrides it below. The map
-         still needs one to construct. */
       zoom: 18,
       mapTypeId: 'hybrid',
-      /* Without a Map ID set to Vector there is no native camera: the
-         free 360 and the opening orbit do nothing on any device, and
-         the compass will never appear, though a picked plot still
-         behaves exactly as before. */
       ...(GOOGLE_MAP_STYLE_ID ? { mapId: GOOGLE_MAP_STYLE_ID } : {}),
-
-      /* ── THE THREE LINES THE 360 LIVES OR DIES BY ────────────────
-         renderingType overrides whatever the Map ID's cloud config
-         says, and the two interaction flags turn tilt and heading on.
-
-         A Map ID can be Vector and STILL refuse to turn: Tilt and
-         Rotation are separate checkboxes on it in the Cloud console,
-         and with them unticked moveCamera({ heading, tilt }) is
-         accepted and silently ignored — which looks exactly like
-         broken code and is why this is forced here instead.
-
-         On a raster fallback 'hybrid' only rotates in 90° steps, and
-         only where Google has 45° imagery, which most plot sites do
-         not. That is the "nothing moves at all" case. */
       renderingType: maps.RenderingType.VECTOR,
       tiltInteractionEnabled: true,
       headingInteractionEnabled: true,
@@ -1847,54 +1882,24 @@ const canStatus = true;
       heading: 0,
       streetViewControl: false,
       fullscreenControl: false,
-      /* Google's own rotate control is off because the compass above
-         replaces it: one dial that reads whichever camera is live,
-         rather than a control that only knows about the native one. */
       rotateControl: false,
       mapTypeControl: false,
       zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
-      /* 'greedy' also hands Google's built-in rotate and tilt gestures
-         to the map — two fingers on touch, ctrl-drag on a desktop — on
-         top of the drag handled below. */
       gestureHandling: 'greedy',
-      /* Must be at least FLY_MAX_Z. The overlay stays sharp well past
-         the imagery, and the lower of the two caps wins — a maxZoom
-         below the fit's target is the usual reason a close-up stops
-         short on small plots. */
       maxZoom: MAP_MAX_Z,
       isFractionalZoomEnabled: true,
-      /* READ ONCE, AT CONSTRUCTION. Changing MAP_BG needs a full
-         reload to show here — a hot reload re-runs the render but not
-         this constructor, so the two divs below will go black while
-         the tile pane behind them stays on the old colour. */
       backgroundColor: MAP_BG,
     });
+
+    MAP_POOL[mapKey] = { map: m, el };
     mapRef.current = m;
     setMap(m);
 
-    /* Passed explicitly: mapRef.current was assigned on the line above,
-       in this same tick, and fitPlan reading it back is a race.
-
-       Fitted twice on purpose. The first call frames it immediately;
-       the container may still be settling to its final height at that
-       moment (fonts, the header laying out, a phone's address bar), and
-       a fit against the wrong height leaves the plan small and off
-       centre. The second runs once the map is idle, against the real
-       size, and is skipped if a plot has already been picked.
-
-       INTRO_WAIT_MS is measured against this: the opening lean starts
-       after the second fit, not before it. */
     fitPlan(m);
     maps.event.addListenerOnce(m, 'idle', () => {
       if (!selRef.current) fitPlan(m);
     });
 
-    /* Turn this on before debugging anything about the rotation. The
-       first line says which renderer actually loaded; the second says
-       whether the camera accepted a turn. VECTOR followed by real
-       numbers means the rendering is fine and the problem is in the
-       motion. RASTER, or VECTOR followed by 0 0, means the Map ID or
-       the flags above — no amount of code will move it. */
     if (CAMERA_DEBUG) {
       maps.event.addListenerOnce(m, 'tilesloaded', () => {
         // eslint-disable-next-line no-console
@@ -1909,8 +1914,7 @@ const canStatus = true;
     }
 
     onReady();
-  }, [maps, mapRef, toLL, bounds, onReady, fitPlan]);
-
+  }, [maps, mapRef, mapKey, toLL, bounds, onReady, fitPlan]);
   /* Google's own gestures move the native camera without going through
      this file, so the flag that offers the compass is kept in step by
      listening to the map rather than by being written to. */
@@ -2324,10 +2328,10 @@ const canStatus = true;
   useEffect(() => {
     if (selected) return undefined;
 
-    const onDown = (e) => {
+       const onDown = (e) => {
       const m = mapRef.current;
       if (!m || typeof m.moveCamera !== 'function') return;
-
+      if (!insideMe(e)) return;
       if (e.pointerType !== 'touch') {
         if (e.button !== 0) return;
         if (e.target && e.target.closest && e.target.closest(INTERACTIVE)) return;
@@ -2445,7 +2449,7 @@ const canStatus = true;
       natGesture.current = null;
       nativeDragRef.current = null;
     };
-  }, [selected, mapRef, stopFly, syncNative, beginTurn, endTurn]);
+  }, [selected, mapRef, stopFly, syncNative, beginTurn, endTurn, insideMe]);
 
   /* Any touch of the map hands the auto-spin back to the user. */
   const noteNativeTouch = () => { nativeTouchRef.current = Date.now(); };
@@ -2603,6 +2607,7 @@ const canStatus = true;
         layout={layout}
         selected={shown}
         matches={shownMatches}
+        highlight={highlight}
         status={status}
         showNumbers={numbersOn}
         showStatus={statusOn}

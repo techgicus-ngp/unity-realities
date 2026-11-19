@@ -9,7 +9,6 @@ import PlanMap, { DOWN_MS } from '../components/map/PlanMap';
 
 import { useMapLayout } from '../hooks/useMapLayout';
 import { usePlotFilters } from '../hooks/usePlotFilters';
-import { saveQuotation } from '../firebase/quotationsRepo';
 import { useAuth } from '../context/Authcontext';
 import { SHARE_ROOT } from '../lib/share';
 import { ACCENT, BODY, CANVAS, HAIR, MONO, MUTED, SANS } from '../theme/tokens';
@@ -50,7 +49,6 @@ export default function PlanPage({ share = false }) {
   const mapRef = useRef(null);
   const flightRef = useRef(0);
   const prevSelRef = useRef(null);
-// const [showStatus, setShowStatus] = useState(true);
   /* Every path in this file hangs off one root, so the public and
      private URLs cannot disagree about where a plot lives. */
   const root = share ? SHARE_ROOT : '/maps';
@@ -177,17 +175,6 @@ export default function PlanPage({ share = false }) {
     navigate(name === selected ? base : plotPath(name));
   }, [navigate, selected, base, plotPath]);
 
-  /* user is null on the public route, so every read of it is optional
-     here — this callback is unreachable in share mode, but a crash on a
-     customer's phone is not worth the two question marks saved. */
-  const onSaveQuote = useCallback((record) => saveQuotation({
-    ...record,
-    mapId,
-    plotPath: selPlot ? selPlot.docPath : null,
-    savedBy: user?.uid,
-    savedByName: user?.name || user?.email,
-  }), [selPlot, mapId, user]);
-
   return (
     <div style={{
       width: '100%', height: '100dvh', position: 'relative',
@@ -242,7 +229,7 @@ export default function PlanPage({ share = false }) {
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         {layout && (
           <PlanMap
-          share
+            share={share}
             layout={layout}
             mapRef={mapRef}
             selected={selected}
@@ -252,32 +239,7 @@ export default function PlanPage({ share = false }) {
             showNumbers={showNumbers}
             showStatus={showStatus}
             onReady={fitWholePlan}
-             mapId={mapId}
-            site={{
-              info: { title: 'Prospera Saraswati', rows: [, ['Plots', '51']], note: '' },
-              gallery: [{ url: '…', thumb: '…', caption: '' }],
-              brochures: [{ name: 'Layout plan', url: '…', size: '2.4 MB' }],
-            }}
           />
-//           <PlanMap
-//   layout={layout}
-//   selected={selected}
-//   onSelect={setSelected}
-//   matches={matches}
-//   mapRef={mapRef}
-//   fitRef={fitRef}
-//   onReady={onReady}
-//   // site={site}
-//   site={{
-//              info: { title: 'Prospera Saraswati', rows: [, ['Plots', '51']], note: '' },
-//               gallery: [{ url: '…', thumb: '…', caption: '' }],
-//               brochures: [{ name: 'Layout plan', url: '…', size: '2.4 MB' }],
-//              }}
-//   mapId={mapId}
-//   share                 /* takes colours, legend and switch together */
-//   status={null}
-//   setShowStatus={null}  /* no setter, so MapToggles draws no switch */
-// />
         )}
 
         <DetailPanel
@@ -318,8 +280,9 @@ export default function PlanPage({ share = false }) {
       {quoteMatch && selPlot && (
         <QuotationModal
           plot={selPlot}
+          user={user}
+          projectName={layout ? layout.meta.title : ''}
           onClose={() => navigate(plotPath(selected))}
-          onSave={onSaveQuote}
         />
       )}
     </div>
