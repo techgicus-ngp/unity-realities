@@ -775,8 +775,6 @@
 
 
 
-
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SQFT } from '../../lib/units';
 import { straightSides } from '../../lib/geometry';
@@ -787,14 +785,17 @@ import { MONO, SANS } from '../../theme/tokens';
    corner-docked chip/card on tablet and phone. Measures itself and
    reports the band it occupies through onReserve.
 
-   SHARED LINKS: onQuote, setStatus and onAssignCustomer arrive as null
-   there. Nothing here asks whether it is a share — it just doesn't draw
-   a control it has no handler for.
+   SHARED LINKS: onQuote, setStatus, onAssignCustomer and onOwnerName
+   arrive as null there. Nothing here asks whether it is a share — it
+   just doesn't draw a control it has no handler for.
 
-   CUSTOMER (sanctioned layout only)
-     customer          the customer attached to this plot, or null
+   OWNER (sanctioned layout only)
+     customer          the person attached to this plot, or null
      customers         picker list from the not-sanctioned layout
-     onAssignCustomer  (customer | null) => void, null = no control */
+     onAssignCustomer  (customer | null) => void, null = no control
+     onOwnerName       (name: string) => void — called with the picked
+                       person's name (or '' on Remove) so the parent can
+                       write it into the plot's doc.ownerName field */
 const HAIR = 'rgba(20, 24, 32, 0.11)';
 const HAIR_SOFT = 'rgba(20, 24, 32, 0.06)';
 const TEXT_MAIN = '#161B24';
@@ -811,6 +812,7 @@ const DOCK_BP = 1024;   // at or below this the panel docks to a corner
 export default function DetailPanel({
   plot, status, setStatus, onClose, onQuote, latLng, onReserve,
   customer = null, customers = null, onAssignCustomer = null,
+  onOwnerName = null,
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [side, setSide] = useState('right');
@@ -884,6 +886,13 @@ export default function DetailPanel({
   const toggle = useCallback(() => setCollapsed((v) => !v), []);
   const flip = useCallback(() => setSide((s) => (s === 'right' ? 'left' : 'right')), []);
 
+  /* Attach / detach the owner, and store the name into ownerName.
+     Remove clears it. */
+  const assignOwner = useCallback((c) => {
+    if (onAssignCustomer) onAssignCustomer(c);
+    if (onOwnerName) onOwnerName(c && c.name ? String(c.name).trim() : '');
+  }, [onAssignCustomer, onOwnerName]);
+
   if (!plot) return null;
 
   const sides = straightSides(plot.sides);
@@ -901,18 +910,20 @@ export default function DetailPanel({
     { label: 'Perimeter', value: plot.sides.reduce((s, v) => s + v, 0).toFixed(2), unit: 'm' },
   ];
 
-  /* Whatever the Flutter app has filled in. Blank fields stay off. */
+  /* The Owner row shows the attached person's name when there is one,
+     otherwise whatever ownerName already holds. Blank fields stay off. */
+  const ownerValue = (customer && customer.name) || doc.ownerName;
+
   const details = [
     ['Dimensions', doc.dimensions],
     ['Facing', doc.facing],
-    ['Owner', doc.ownerName],
+    ['Owner', ownerValue],
     ['Phone', doc.contactPhone, 'tel'],
     ['Notes', doc.notes],
   ].filter(([, v]) => v && String(v).trim());
 
-  /* The customer attached from the not-sanctioned layout. */
+  /* The rest of the attached owner's record (name is in the Owner row). */
   const customerRows = customer ? [
-    ['Customer', customer.name],
     ['Phone', customer.phone, 'tel'],
     ['Address', customer.address],
     ['Old plot', customer.oldPlot],
@@ -1106,7 +1117,7 @@ export default function DetailPanel({
         .pp-row-v a { color: ${ACCENT}; text-decoration: none; }
         .pp-row-v a:hover { text-decoration: underline; }
 
-        /* ---- customer attached from the not-sanctioned layout ---- */
+        /* ---- owner attached from the not-sanctioned layout ---- */
         .pp-cust {
           margin-top: 14px; padding: 10px 12px 12px;
           border: 1px solid rgba(44, 90, 79, 0.3); border-radius: 10px;
@@ -1415,13 +1426,13 @@ export default function DetailPanel({
             </div>
           )}
 
-          {/* ── CUSTOMER: sanctioned layout only ─────────────────────
-              Drawn when a customer is already attached, or when there is
-              a handler to attach one. No handler and no customer (the
-              not-sanctioned pane, a shared link) draws nothing. */}
+          {/* ── OWNER: sanctioned layout only ────────────────────────
+              Drawn when an owner is already attached, or when there is
+              a handler to attach one. Picking one stores the name into
+              ownerName through onOwnerName. */}
           {(customer || onAssignCustomer) && (
             <div className="pp-cust">
-              <div className="pp-cust-h">Customer</div>
+              <div className="pp-cust-h">Owner</div>
 
               {customerRows.map(([label, value, kind]) => (
                 <div className="pp-row" key={label}>
@@ -1436,7 +1447,7 @@ export default function DetailPanel({
 
               {!customer && !picking && (
                 <div className="pp-cust-empty">
-                  No customer attached to this plot yet.
+                  No owner attached to this plot yet.
                 </div>
               )}
 
@@ -1448,14 +1459,14 @@ export default function DetailPanel({
                     data-solid={customer ? '0' : '1'}
                     onClick={() => setPicking(true)}
                   >
-                    {customer ? 'Change customer' : '+ Add customer'}
+                    {customer ? 'Change owner' : '+ Add Owner'}
                   </button>
                   {customer && (
                     <button
                       type="button"
                       className="pp-cust-btn"
                       data-quiet="1"
-                      onClick={() => onAssignCustomer(null)}
+                      onClick={() => assignOwner(null)}
                     >
                       Remove
                     </button>
@@ -1476,8 +1487,8 @@ export default function DetailPanel({
                     {pickList.length === 0 && (
                       <div className="pp-cust-empty">
                         {(customers || []).length === 0
-                          ? 'No customers found in the not sanctioned layout.'
-                          : 'No customer matches.'}
+                          ? 'No owners found in the not sanctioned layout.'
+                          : 'No owner matches.'}
                       </div>
                     )}
                     {pickList.map((c) => (
@@ -1486,7 +1497,7 @@ export default function DetailPanel({
                         type="button"
                         className="pp-cust-item"
                         onClick={() => {
-                          onAssignCustomer(c);
+                          assignOwner(c);
                           setPicking(false);
                           setQ('');
                         }}

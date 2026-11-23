@@ -251,6 +251,7 @@ export default function PlanPage({ share = false }) {
           latLng={selLL}
           onClose={() => navigate(base)}
           onQuote={share ? null : () => navigate(`${plotPath(selected)}/quote`)}
+          onOwnerName={(name) => savePlotDoc(selectedPlot.name, { ownerName: name })}
         />
 
         {layout && error && (
