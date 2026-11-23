@@ -192,12 +192,12 @@ const SPIN_TAPER_DEG = 60;
    Past about 21 the satellite imagery has no more detail and Google
    upscales it: the overlay and its dimensions stay sharp, the photo
    behind them goes soft. */
-const GUTTER = 1.6;
+const GUTTER = 1.8;               // was 1.6; must cover DimensionOverlay's off + txt
 const LIFT_RESERVE = 0.4;
-const CLOSE_BOOST = 1.4;          // desktop
-const CLOSE_BOOST_TABLET = 1.65;
-const CLOSE_BOOST_PHONE = 1.9;
-const SLACK = 1.02;
+const CLOSE_BOOST = 1.6;          // desktop (was 1.4)
+const CLOSE_BOOST_TABLET = 1.85;  // was 1.65
+const CLOSE_BOOST_PHONE = 2.1;    // was 1.9
+const SLACK = 1.0;                // was 1.02
 const LIFT_BIAS = 0.5;
 const FLY_MIN_Z = 17;
 const FLY_MAX_Z = 24;
@@ -277,11 +277,11 @@ const NATIVE_EPS_DEG = 0.5;
    the outermost plots hide underneath both.
 
    Measure your own header and bar and match these. */
-const FIT_PAD = { top: 92, right: 4, bottom: 24, left: 4 };
-const FIT_PAD_TABLET = { top: 78, right: 3, bottom: 44, left: 3 };
-const FIT_PAD_NARROW = { top: 62, right: 2, bottom: 58, left: 2 };
+const FIT_PAD        = { top: 84, right: 0, bottom: 0,  left: 0 };
+const FIT_PAD_TABLET = { top: 70, right: 0, bottom: 40, left: 0 };
+const FIT_PAD_NARROW = { top: 56, right: 0, bottom: 52, left: 0 };
 const NARROW_PX = 600;    // phone
-const TABLET_PX = 1024;   // tablet, and a narrow desktop window
+const TABLET_PX = 1024;   // tablet, and a narrow desktop window  // tablet, and a narrow desktop window
 
 /* A resize on a phone is not one event: the address bar sliding away,
    the on-screen keyboard, a sheet animating open and an orientation
@@ -1145,11 +1145,30 @@ const canStatus = true;
            actually landed on. */
         flyingRef.current = false;
         if (overlayRef.current) overlayRef.current.draw();
+
+        /* DIAGNOSTIC — remove once the zoom question is answered. */
+        // eslint-disable-next-line no-console
+        console.log('[pick zoom]', {
+          asked: z1,
+          got: m.getZoom(),
+          fit: f.fit,
+          inset,
+          viewW: viewRef.current && viewRef.current.clientWidth,
+          viewH: viewRef.current && viewRef.current.clientHeight,
+        });
+        try {
+          new maps.MaxZoomService().getMaxZoomAtLatLng(aim, (r) => {
+            // eslint-disable-next-line no-console
+            console.log('[imagery max zoom]', r);
+          });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.log('[imagery max zoom] unavailable', e);
+        }
       }
     };
     flyRef.current = requestAnimationFrame(step);
-  }, [mapRef, pickFrame, overlayRef]);
-
+  }, [mapRef, pickFrame, overlayRef, inset, maps, viewRef]);
   /* ── THE GESTURE FLAG ────────────────────────────────────────────
      One pair of calls around every native camera movement. While it is
      up, the drawing window is frozen and hover is ignored, so a turn
